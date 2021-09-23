@@ -1,0 +1,308 @@
+---
+title: "new"
+author: "Raymond Anan Otoo"
+date: "11/30/2020"
+output: pdf_document
+---
+
+```{r}
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+
+#BiocManager::install(c("plier", "sigPathway", "mm74av1mmentrezgcdf","mm74av1mmentrezgprobe", "org.Hs.eg.db"))
+
+```
+
+```{r}
+#1 Set the directories that will be used for the study
+tempdir="/Users/raymondotoo/Desktop/R.analysis/VitiligoData"
+outdir="/Users/raymondotoo/Desktop/RProjectResults"
+```
+
+
+
+```{r}
+setwd(tempdir)
+library(affy)
+d1<-ReadAffy()
+```
+
+```{r}
+#d1
+#Read in phenodata
+#pData(d1)<-read.table("PhenoData.txt", header=T,row.names=1,sep="\t");
+pData(d1)
+d1
+#class(d1)
+#class(pData(d1))
+```
+
+```{r}
+image(d1[,1])
+```
+
+
+```{r}
+hist(d1)
+```
+
+```{r}
+
+boxplot(d1, col=c("darkgreen", "darkgreen", "darkgreen","darkred", "darkred", "darkred"),main="GSE90880 - boxplots", las=2)
+
+```
+
+```{r}
+plot(exprs(d1)[,1], exprs(d1)[,2])
+```
+
+```{r}
+#Normalization
+#a Background correction 
+#RMA is used to normalize the data and extract probe-set intensity
+eset.rma <- rma(d1)
+
+
+################################################################## Alternatively ################################################################################
+#MAS5 is used to normalize the data and extract probe-set intensity
+eset.mas <- mas5(d1)
+```
+
+
+
+```{r}
+
+# Boxplot
+boxplot(exprs(eset.rma), col=c("darkgreen", "darkgreen", "darkgreen","darkred", "darkred", "darkred"),main="GSE90880 - boxplots", las=2)
+
+#boxplot(exprs(eset.rma))
+
+#boxplot(exprs(eset.mas))
+boxplot(exprs(eset.mas), col=c("darkgreen", "darkgreen", "darkgreen","darkred", "darkred", "darkred"),main="GSE90880 - boxplots", las=2)
+```
+
+
+
+```{r}
+#hist(exprs(eset.mas), col = "gray", main="GSE90880 (log2) - Histogram")
+hist(exprs(eset.rma))
+
+```
+
+
+```{r}
+library(limma)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(ggfortify)
+library("affy")
+#autoplot(prcomp(eset.rma))
+
+pca_res <- prcomp(eset.rma, scale. = TRUE)
+autoplot(pca_res)
+#autoplot(pca_res, data =eset.rma, colour = 'Species')
+
+
+#plotPCA(eset.rma, groups =as.numeric(pData(d1)[,1]),groupnames =levels(pData(d1)[,1]))
+
+```
+
+```{r}
+#pData(d1)[,1 ] 
+factor(pData(d1)[,1 ] )
+pData(d1)
+#c("control","control", "control","control","control","control","case","case","case","case","case","case","case","case")
+
+#x<-factor(c("control","control", "control","control","control","control","case","case","case","case","case","case","case","case"))
+
+#levels(pData(d1)[,1 ])[levels(pData(d1)[,1 ])==1] <- "X"
+#factor(pData(d1)[,1 ] )
+
+#used to rename the factors
+pData(d1)[,1 ] <- factor(pData(d1)[,1 ],labels=c("control","control", "control","control","control","control","case","case","case","case","case","case","case","case"))
+
+#pData(d1)[,1 ] 
+
+group<- factor(pData(d1)[,1 ] , levels =levels(pData(d1)[,1]))
+design<- model.matrix(~group)
+design
+#design<- model.matrix(~group)
+```
+
+```{r}
+#Fit linear model to each gene
+fit1 <-lmFit(eset.rma, design)
+```
+
+
+```{r}
+#Get p-values for comparisons
+fit1 <-eBayes(fit1)
+```
+
+
+```{r}
+#Create a list of 50 genes with strongest differential expression (highest significance)
+#Option adjust=“fdr” means we adjust for multiple testing – very important!!!
+#tab50 <- topTable(fit1, coef = 2, adjust = "fdr",n = 50)
+tab30 <- topTable(fit1,coef = 2, adjust = "fdr",n = 30, genelist=fit1$genes)
+head(tab30) 
+tab30
+
+#note logFC is between control and case so we change it
+tab30$logFC <- -tab30$logFC
+
+tab30$FC <- ifelse (tab30$logFC > 0,
+2^tab30$logFC, -1/2^tab30$logFC)
+
+tab30
+```
+
+
+
+
+
+
+
+```{r}
+#Obtain the annotation Id from the file 
+library(hgu95av2.db)
+library(annotate)
+
+probeList <- rownames(tab30)
+probeList
+
+geneSymbol <- getSYMBOL(probeList, 'hgu95av2.db')
+geneName <- sapply(lookUp(probeList, 'hgu95av2.db','GENENAME'), function(x) x[1])
+EntrezID <- sapply(lookUp(probeList, 'hgu95av2.db','ENTREZID'), function(x) x[1])
+
+tab30$geneSymbol<-geneSymbol
+tab30$geneName<-geneName
+tab30$EntrezID<-EntrezID
+
+tab30
+sortedBy_FC <- tab30[order(tab30$FC),]
+```
+
+```{r}
+#jpeg(file = "/Users/raymondotoo/Desktop/R.analysis/VitiligoData/Top_de_vitiligo.jpeg",  width = 4, height = 4) # The height of the plot in inches
+#jpeg("de_vit.jpg")
+library(kableExtra)
+library(arsenal)
+library(magrittr)
+
+        sortedBy_FC %>%
+  kbl(caption = "Top 30 differentially Expressed Genes from Vitiligo") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+        
+```
+
+
+
+
+
+```{r}
+############################################################ Write to file the sorted table to a file ###########################################################
+#write the top differentially expressed genes to file
+#NB Upregulated are > 0 and downregulated < 0
+
+write.csv(sortedBy_FC,file="top30_de_genes.csv",quote=FALSE,row.names=T);
+```
+
+
+
+```{r}
+heatmap(exprs(eset.rma))
+```
+
+```{r}
+#########################################################################33# Alternatively #################################################################
+# A prettier heatmap
+library(gplots)
+
+colMy=c("green", "magenta");
+
+heatmap.2(exprs(eset.rma),trace="none",ColSideColors=colMy[as.numeric(as.numeric(group))],labRow="",cexCol=0.6, scale="row",col=redgreen,
+main="Significant Genes with pvalue < 0.001")
+```
+
+```{r}
+library(hgu95av2.db)
+##################################################################### Annotation ##########################################################################
+probeList <- rownames(exprs(eset.rma))
+#probeList
+
+
+if (require(hgu95av2.db) & require(annotate))
+{
+geneSymbol <- getSYMBOL(probeList, 'hgu95av2.db')
+ geneName <- sapply(lookUp(probeList, 'hgu95av2.db',
+'GENENAME'), function(x) x[1])
+ EntrezID <- sapply(lookUp(probeList, 'hgu95av2.db',
+'ENTREZID'), function(x) x[1])
+}
+```
+
+
+```{r}
+#Annotation continued
+numGenes <- nrow(eset.rma)
+numGenes
+annotated_table <- topTable (fit1, coef=2,number=numGenes,genelist=fit1$genes)
+
+#note logFC is between control and case so we change it
+annotated_table$logFC <- -annotated_table$logFC
+
+annotated_table$FC <- ifelse (annotated_table$logFC > 0,
+2^annotated_table$logFC, -1/2^annotated_table$logFC)
+
+```
+
+
+```{r}
+colnames(annotated_table)[colnames(annotated_table)=="FC"] <-"FoldChange case/control"
+```
+
+```{r}
+#Annotation continued
+UP_annotated_table <-annotated_table[(annotated_table[,"FoldChange case/control"] > 0),]
+
+DOWN_annotated_table <-annotated_table[(annotated_table[,"FoldChange case/control"] < 0),]
+```
+
+
+```{r}
+##################################################### #write all the upregulated and downregulated genes to seperate files ##################################### 
+write.table (UP_annotated_table,file="Upregulated in DS genes_all.txt",sep="\t",quote=FALSE,row.names=F);
+
+write.table (DOWN_annotated_table,file="Downregulated in DS genes_all.txt",sep="\t",quote=FALSE,row.names=F);
+```
+
+
+
+
+```{r}
+#Obtain the annotation Id from the file 
+library(hgu95av2.db)
+library(annotate)
+
+probeList <- rownames(eset.rma)
+probeList
+
+geneSymbol <- getSYMBOL(probeList, 'hgu95av2.db')
+geneName <- sapply(lookUp(probeList, 'hgu95av2.db','GENENAME'), function(x) x[1])
+EntrezID <- sapply(lookUp(probeList, 'hgu95av2.db','ENTREZID'), function(x) x[1])
+
+#tab30$geneSymbol<-geneSymbol
+#tab30$geneName<-geneName
+#tab30$EntrezID<-EntrezID
+
+#tab30
+#sortedBy_FC <- tab30[order(tab30$FC),]
+geneSymbol
+
+```
+
+
